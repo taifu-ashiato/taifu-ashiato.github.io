@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>台風の足あと 3D</title>
+<meta name="description" content="気象庁の台風の記録と NASA の衛星写真で、台風が通った道を 3D の地球の上でたどるページ。令和元年東日本台風・伊勢湾台風と、2026年に日本へ来た13個。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="台風の足あと 3D">
+<meta property="og:description" content="気象庁の台風の記録と NASA の衛星写真で、台風が通った道を 3D の地球の上でたどる。令和元年東日本台風・伊勢湾台風と、2026年に日本へ来た13個。">
+<meta property="og:url" content="https://taifu-ashiato.github.io/">
+<meta property="og:image" content="https://taifu-ashiato.github.io/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Antique&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<script>window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/';</script>
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Cesium.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<style>
+/* 宇宙から見た地球（NASA の衛星画像）の上に、和紙の札を浮かべる。左上に題、右上に日時、下に操作の帯。 */
+:root {
+  --paper: rgba(246, 240, 226, .93);
+  --ink: #221e1b;
+  --ink-soft: #6a5f53;
+  --shu: #c23b22;
+  --line: #b9a98c;
+  --display: "Zen Antique", "Yu Mincho", serif;
+  --body: "Zen Kaku Gothic New", "Yu Gothic", "Hiragino Sans", sans-serif;
+  color-scheme: dark;
+}
+html, body { margin: 0; height: 100%; background: #05070d; color: var(--ink); font-family: var(--body); overflow: hidden; }
+#globe { position: absolute; inset: 0; }
+.card { position: absolute; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+#title { left: 16px; top: 16px; padding: 10px 16px 12px; max-width: min(520px, calc(100% - 32px)); }
+#title h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(26px, 4vw, 40px); line-height: 1.2; }
+#title p { margin: 2px 0 0; font-size: 14px; }
+#title .note { color: var(--ink-soft); font-size: 13px; }
+/* 中心が通った都道府県：入った順に。いまの所は朱 */
+#title .route { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.75; }
+#title .route[hidden] { display: none; }
+.route .lbl { display: block; font-size: 12px; color: var(--ink-soft); }
+.route .pf { white-space: nowrap; }
+.route .pf small { font-size: 11px; }
+.route .pf i { font-style: normal; font-size: 11px; color: var(--ink-soft); margin-left: 3px; }
+.route .pf.now { color: var(--shu); font-weight: 700; }
+.route .pf.nr { color: var(--ink-soft); }
+.route .lbl + .pf, .route .pf + .lbl { margin-top: 0; }
+.route .pf + .lbl { margin-top: 4px; }
+.route .sep { color: var(--ink-soft); margin: 0 5px; }
+.route .pnote { display: block; font-size: 11px; color: var(--ink-soft); line-height: 1.4; margin-top: 2px; }
+/* 今年の台風をまとめて見る：月の色の見本と、押せる台風の一覧 */
+.mk { display: inline-block; margin: 0 2px; padding: 0 6px; border-radius: 4px; background: var(--c); color: var(--ink); font-size: 11px; line-height: 1.6; }
+.route .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.route .sc { font-size: 12px; padding: 1px 8px 1px 6px; border-radius: 999px; line-height: 1.6; background: #fffaf0; }
+.route .sc b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 4px; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+.route .sc.lf { border-color: var(--shu); color: var(--shu); font-weight: 700; }
+.route .sc.on { background: var(--ink); color: #fffaf0; border-color: var(--ink); }
+#clock { right: 16px; top: 16px; padding: 10px 16px; min-width: 230px; font-variant-numeric: tabular-nums; }
+#clock .d { font-size: 24px; font-weight: 700; }
+#clock .p { color: var(--shu); font-size: 16px; }
+#clock .w { font-size: 14px; color: var(--ink); }
+#clock .n { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+#clock .n:empty { display: none; }
+#bar { left: 50%; transform: translateX(-50%); bottom: 34px; padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: min(980px, calc(100% - 32px)); box-sizing: border-box; }
+#bar label { font-size: 13px; color: var(--ink-soft); }
+select, button { font: inherit; font-size: 14px; color: var(--ink); background: #fffaf0; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--ink); color: #fffaf0; border-color: var(--ink); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--shu); outline-offset: 2px; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 999px 0 0 999px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 999px 999px 0; }
+#time { flex: 1 1 200px; accent-color: var(--shu); }
+#play { background: var(--shu); color: #fff; border-color: var(--shu); font-weight: 700; }
+#credit { position: absolute; left: 16px; bottom: 6px; font-size: 11px; color: #d8d2c4; text-shadow: 0 1px 2px #000; max-width: calc(100% - 240px); }
+.cesium-viewer-bottom { bottom: 2px !important; right: 4px; left: auto !important; }
+.cesium-widget-credits { font-size: 10px; }
+#credit .short { display: none; }
+/* スマホ：日時の札は操作の帯のすぐ上（帯の高さは app.js が --bar-h に入れる）。帯は1行に1つずつ。 */
+@media (max-width: 700px) {
+  #title { left: 12px; top: 12px; padding: 8px 12px 10px; max-width: calc(100% - 24px); }
+  #title h1 { font-size: 24px; }
+  #title p { font-size: 12px; }
+  #title .note { font-size: 11px; }
+  #title .route { font-size: 12px; line-height: 1.6; margin-top: 4px; padding-top: 4px; }
+  .route .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .route .sc { flex: none; }
+  .route .lbl, .route .pnote { display: none; }
+  #clock { top: auto; left: 12px; right: 12px; bottom: calc(var(--bar-h, 160px) + 42px); min-width: 0; padding: 6px 12px; }
+  #clock .d { font-size: 18px; }
+  #clock .p, #clock .w { font-size: 13px; }
+  #bar { bottom: 46px; width: calc(100% - 24px); padding: 8px 10px; gap: 8px; }
+  .cesium-viewer-bottom { bottom: 18px !important; }
+  #bar > label { display: none; }
+  #storm { flex: 1 1 100%; }
+  .seg { flex: 1 1 100%; }
+  .seg button { flex: 1 1 auto; font-size: 12px; padding: 5px 6px; white-space: nowrap; }
+  #play, #free { flex: 1 1 0; }
+  #time { flex: 1 1 100%; }
+  #credit { left: 12px; right: 12px; bottom: 4px; font-size: 10px; max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #credit .long { display: none; }
+  #credit .short { display: inline; }
+}
+/* 背の低い画面（横向きのスマホ・小さな窓）：説明の行を省いて詰める */
+@media (max-height: 560px) {
+  #title .note, #clock .n, .route .lbl, .route .pnote { display: none; }
+  #title h1 { font-size: 22px; }
+  #title p { font-size: 11px; }
+  #clock .d { font-size: 16px; }
+  #clock .p, #clock .w { font-size: 12px; }
+  #bar { padding: 6px 8px; gap: 6px; }
+  select, button { font-size: 13px; padding: 3px 10px; }
+}
+</style>
+</head>
+<body>
+<div id="globe"></div>
+<div class="card" id="title"><h1 id="tName"></h1><p id="tSub"></p><p class="note" id="tNote"></p><p class="route" id="tRoute" hidden></p></div>
+<div class="card" id="clock" aria-live="off"><div class="d" id="cDate"></div><div class="p" id="cP"></div><div class="w" id="cW"></div><div class="n" id="cN"></div></div>
+<div class="card" id="bar">
+  <label for="storm">台風</label>
+  <select id="storm">
+    <optgroup label="記録的な台風">
+      <option value="1919">令和元年東日本台風（2019年）</option>
+      <option value="5915">伊勢湾台風（1959年）</option>
+    </optgroup>
+  </select>
+  <label>雲</label>
+  <span class="seg" role="group" aria-label="雲の見せ方">
+    <button type="button" data-cloud="nasa">NASAの実写真</button>
+    <button type="button" data-cloud="sat">衛星写真風</button>
+    <button type="button" data-cloud="ukiyo">浮世絵風</button>
+    <button type="button" data-cloud="none">雲なし</button>
+  </span>
+  <button type="button" id="play">足あとをたどる</button>
+  <button type="button" id="free" aria-pressed="false">自由に再生</button>
+  <input type="range" id="time" min="0" max="1" step="0.25" aria-label="時刻">
+</div>
+<div id="credit"><span class="long">衛星画像：NASA GIBS（Blue Marble／VIIRS・MODIS の日ごとの実写真）　経路と風の範囲：気象庁「RSMC Best Track Data」を加工して作成　雲の絵（衛星写真風・浮世絵風）はイメージ</span><span class="short">画像 NASA GIBS／経路 気象庁ベストトラックを加工／雲の絵はイメージ</span></div>
+<script src="app.js"></script>
+</body>
+</html>
